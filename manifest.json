@@ -1,0 +1,10 @@
+{
+	"id": "obsidian-header-referencer",
+	"name": "Header Referencer",
+	"version": "0.0.1",
+	"minAppVersion": "0.15.0",
+	"description": "A system for easy header managing, includes header metadata and header reference modal",
+	"author": "mateusdcc",
+	"authorUrl": "https://github.com/mateusdcc/",
+	"isDesktopOnly": false
+}
