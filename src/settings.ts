@@ -1,8 +1,6 @@
-import { PluginSettingTab, App, Setting, ColorComponent, Modal } from "obsidian";
+import { App, Modal, Notice, PluginSettingTab, Setting } from "obsidian";
 import HeadRef from "./main";
-import { Category, Header, SuperCategory } from "./utils/types";
-import { stringify } from "querystring";
-import { create } from "domain";
+import { Category, SuperCategory } from "./utils/types";
 
 export interface PluginSettings {
 	version: string;
@@ -54,7 +52,13 @@ export function DEFAULT_SETTINGS(plugin: HeadRef): PluginSettings {
 	}
 }
 
-function createCategorySettings(containerEl: HTMLElement, category: Category, index: number, plugin: HeadRef) {
+function createCategorySettings(
+	containerEl: HTMLElement,
+	category: Category,
+	index: number,
+	plugin: HeadRef,
+	renderCategories: () => void
+) {
 	new Setting(containerEl)
 	.setName(category.name)
 	.addButton(button => button
@@ -62,25 +66,21 @@ function createCategorySettings(containerEl: HTMLElement, category: Category, in
 		.onClick(async () => {
 			plugin.settings.categories.splice(index, 1);
 			await plugin.saveSettings();
-			plugin.loadSettings();
-			containerEl.empty();
-			plugin.settings.categories.forEach((category, index) => {
-				createCategorySettings(containerEl, category, index, plugin);
-			});
+			renderCategories();
 		})
 	);
 }
 
 class CreateCategoryModal extends Modal {
 	private plugin: HeadRef;
-	private category: Category;
-	private componentEl: HTMLElement;
+	private categoryName: string;
+	private renderCategories: () => void;
 
-	constructor(app: App, plugin: HeadRef, category: Category, componentEl: HTMLElement) {
+	constructor(app: App, plugin: HeadRef, category: Category, renderCategories: () => void) {
 		super(app);
 		this.plugin = plugin;
-		this.category = category;
-		this.componentEl = componentEl;
+		this.categoryName = category.name;
+		this.renderCategories = renderCategories;
 	}
 
 	onOpen() {
@@ -90,17 +90,22 @@ class CreateCategoryModal extends Modal {
 			.setName('Category Name')
 			.addText(text => text
 				.setPlaceholder('Enter the category name')
-				.setValue(this.category.name)
-				.onChange(async (value) => {
-					this.category.name = value;
+				.setValue(this.categoryName)
+				.onChange((value) => {
+					this.categoryName = value;
 				})
 			);
 		const saveButton = contentEl.createEl('button', { text: 'Save' });
 		saveButton.addEventListener('click', async () => {
-			this.plugin.settings.categories.push(this.category);
+			const name = this.categoryName.trim();
+			if (!name) {
+				new Notice('Category name cannot be empty.');
+				return;
+			}
+
+			this.plugin.settings.categories.push({ name });
 			await this.plugin.saveSettings();
-			this.plugin.loadSettings();
-			createCategorySettings(this.componentEl, this.category, this.plugin.settings.categories.length - 1, this.plugin);
+			this.renderCategories();
 			this.close();
 		});
 	}
@@ -128,6 +133,16 @@ export class PluginSettingTabImpl extends PluginSettingTab {
 
 		containerEl.createEl('h4', { text: 'Categories' });
 		const addCategory = containerEl.createEl('div', { cls: 'ohr-add-category' });
+		containerEl.createEl('h3', { text: 'Created Categories' });
+		const editCategories = containerEl.createEl('div');
+
+		const renderCategories = () => {
+			editCategories.empty();
+			this.plugin.settings.categories.forEach((category, index) => {
+				createCategorySettings(editCategories, category, index, this.plugin, renderCategories);
+			});
+		};
+
 		new Setting(addCategory)
 		.setName('Add Category')
 		.setDesc('Add a new category')
@@ -137,20 +152,10 @@ export class PluginSettingTabImpl extends PluginSettingTab {
 				const newCategory: Category = {
 					name: 'New Category',
 				};
-				this.plugin.settings.categories.push(newCategory);
-				await this.plugin.saveSettings();
-				this.plugin.loadSettings();
-				new CreateCategoryModal(this.app, this.plugin, newCategory, editCategories).open();
+				new CreateCategoryModal(this.app, this.plugin, newCategory, renderCategories).open();
 			})
 		);
 
-		containerEl.createEl('h3', { text: 'Created Categories' });
-		const editCategories = containerEl.createEl('div');
-
-		this.plugin.settings.categories.forEach((category, index) => {
-			createCategorySettings(editCategories, category, index, this.plugin);
-		}
-		);
-		
+		renderCategories();
 	}
 }
