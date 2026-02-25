@@ -1,4 +1,4 @@
-import { App, Editor, FuzzySuggestModal, Modal } from "obsidian";
+import { App, Editor, FuzzyMatch, FuzzySuggestModal, Modal } from "obsidian";
 import { GroupMode, Header } from "src/utils/types";
 
 interface TreatedHeader extends Header {
@@ -93,6 +93,8 @@ export class ResultModal extends FuzzySuggestModal<TreatedHeader> {
 		super(app);
 		this.headers = headers.map((header) => ({
 			...header,
+			filePath: header.filePath ?? header.file,
+			labels: Array.isArray(header.labels) ? header.labels : [],
 			path: `[[${header.file}#${header.header}|${header.name}]]`
 		}));
 		this.editor = editor;
@@ -106,31 +108,49 @@ export class ResultModal extends FuzzySuggestModal<TreatedHeader> {
 	}
 
 	getItemText(item: TreatedHeader): string {
-		const labels = item.labels.join(" ");
+		const labels = Array.isArray(item.labels) ? item.labels.join(" ") : "";
 		return `${item.name} ${item.parent} ${item.filePath} ${item.header} ${labels}`;
 	}
 
-	renderSuggestion(item: TreatedHeader, el: HTMLElement): void {
-		const title = el.createEl("div", { text: item.name });
+	private toHeaderItem(item: TreatedHeader | FuzzyMatch<TreatedHeader>): TreatedHeader {
+		const maybeMatch = item as FuzzyMatch<TreatedHeader>;
+		const rawItem = (maybeMatch?.item ?? item) as Partial<TreatedHeader>;
+		return {
+			parent: rawItem.parent ?? "Unknown",
+			name: rawItem.name ?? "",
+			header: rawItem.header ?? "",
+			file: rawItem.file ?? rawItem.filePath ?? "",
+			filePath: rawItem.filePath ?? rawItem.file ?? "",
+			modifiedTime: rawItem.modifiedTime ?? 0,
+			labels: Array.isArray(rawItem.labels) ? rawItem.labels : [],
+			metadata: rawItem.metadata ?? {},
+			path: rawItem.path ?? ""
+		};
+	}
+
+	renderSuggestion(item: TreatedHeader | FuzzyMatch<TreatedHeader>, el: HTMLElement): void {
+		const headerItem = this.toHeaderItem(item);
+		const title = el.createEl("div", { text: headerItem.name });
 		title.style.fontWeight = "600";
 
 		const infoParts: string[] = [];
 		if (this.options.groupMode === "category") {
-			infoParts.push(`[${item.parent}]`);
+			infoParts.push(`[${headerItem.parent}]`);
 		}
 		if (this.options.groupMode === "file") {
-			infoParts.push(`[${item.filePath}]`);
+			infoParts.push(`[${headerItem.filePath}]`);
 		}
-		infoParts.push(`Category: ${item.parent}`);
-		infoParts.push(`File: ${item.filePath}`);
-		infoParts.push(`Header: ${item.header}`);
+		infoParts.push(`Category: ${headerItem.parent}`);
+		infoParts.push(`File: ${headerItem.filePath}`);
+		infoParts.push(`Header: ${headerItem.header}`);
 
 		const details = el.createEl("div", { text: infoParts.join(" | ") });
 		details.style.fontSize = "0.85em";
 		details.style.opacity = "0.8";
 
-		if (item.labels.length > 0) {
-			const labels = el.createEl("div", { text: `Labels: ${item.labels.join(", ")}` });
+		const labelsList = Array.isArray(headerItem.labels) ? headerItem.labels : [];
+		if (labelsList.length > 0) {
+			const labels = el.createEl("div", { text: `Labels: ${labelsList.join(", ")}` });
 			labels.style.fontSize = "0.8em";
 			labels.style.opacity = "0.7";
 		}
